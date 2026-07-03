@@ -19,6 +19,13 @@ dependencies = [
     "aafragpy",
     "gammapy",
     "astropy",
+    # regions<0.12 pinned: gammapy 2.1 imports
+    # regions._utils.wcs_helpers.pixel_scale_angle_at_skycoord, which regions 0.12
+    # removed/relocated -- gammapy 2.1 itself doesn't pin an upper bound, so an
+    # unconstrained install pulls a regions that breaks `import gammapy` outright.
+    # See DECISIONS.md ADR-017. Not our bug to patch; revisit once gammapy pins
+    # this itself or regions restores the symbol.
+    "regions<0.12",
 ]
 
 [project.optional-dependencies]

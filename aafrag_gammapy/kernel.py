@@ -24,6 +24,7 @@ __all__ = [
     "cross_section",
     "convolve_spectrum",
     "combine_species",
+    "energy_range",
 ]
 
 
@@ -115,6 +116,20 @@ def convolve_spectrum(cs, primary_flux):
     return aafragpy.get_spectrum(
         cs.energy_primary, cs.energy_secondary, cs.matrix, np.asarray(primary_flux)
     )
+
+
+def energy_range(primary, target, channel):
+    """Valid primary-energy range [GeV] tabulated for (primary, target, channel).
+
+    Reads aafragpy's own table thresholds directly (open_data_files), rather than
+    hardcoding them, so this stays correct if the installed aafragpy tables ever
+    change. Different (primary, target) pairs have different thresholds (ADR-012),
+    e.g. p-p starts at ~4 GeV, p-C at ~999 GeV -- callers combining several primary/
+    target pairs must intersect their ranges before picking one shared integration grid.
+    """
+    validate_species(primary, target)
+    _, _, e_th_b, _, e_th_t = aafragpy.open_data_files(channel, f"{primary}-{target}")
+    return float(e_th_b) / 1e9, float(e_th_t) / 1e9
 
 
 def combine_species(primary_fluxes, target_composition, n_H, channel, energy_primary_gev):
