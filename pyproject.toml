@@ -11,7 +11,11 @@ license = { file = "LICENSE" }
 authors = [{ name = "Régis Terrier" }]
 requires-python = ">=3.10"
 dependencies = [
-    "numpy",
+    # numpy<2.4 pinned: aafragpy 1.14.4's open_data_files does float() on a
+    # non-0-d array, which is a hard TypeError under numpy>=2.4 (was only a
+    # DeprecationWarning before) -- see DECISIONS.md ADR-016. Not our bug to
+    # patch (never vendor/patch aafragpy); revisit once aafragpy fixes it upstream.
+    "numpy<2.4",
     "aafragpy",
     "gammapy",
     "astropy",
