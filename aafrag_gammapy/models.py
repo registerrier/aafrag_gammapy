@@ -10,7 +10,8 @@ from astropy import constants as const
 from astropy import units as u
 
 from gammapy.modeling import Parameter, Parameters
-from gammapy.modeling.models import ModelBase, SpectralModel
+from gammapy.modeling.models import SPECTRAL_MODEL_REGISTRY, ModelBase, SpectralModel
+from gammapy.utils.registry import Registry
 
 from . import kernel
 
@@ -18,6 +19,7 @@ __all__ = [
     "ParticleDistribution",
     "PowerLawParticleDistribution",
     "ExpCutoffPowerLawParticleDistribution",
+    "PARTICLE_DISTRIBUTION_REGISTRY",
     "AafragSpectralModelBase",
     "AafragGammaSpectralModel",
     "AafragNuESpectralModel",
@@ -98,6 +100,15 @@ class ExpCutoffPowerLawParticleDistribution(ParticleDistribution):
         pwl = amplitude * (energy / reference) ** (-index)
         cutoff = np.exp(-(energy * lambda_).to_value(u.dimensionless_unscaled))
         return pwl * cutoff
+
+
+#: Package-local tag->class lookup for `ParticleDistribution` subclasses (ADR-020), used by
+#: `AafragSpectralModelBase.from_dict` to rebuild `primary_composition` submodels. Distinct
+#: from gammapy's `SPECTRAL_MODEL_REGISTRY`: `ParticleDistribution` isn't a `SpectralModel`
+#: (ADR-019), so gammapy's own YAML system has no reason to know about it.
+PARTICLE_DISTRIBUTION_REGISTRY = Registry(
+    [PowerLawParticleDistribution, ExpCutoffPowerLawParticleDistribution]
+)
 
 
 class AafragSpectralModelBase(SpectralModel):
@@ -254,6 +265,48 @@ class AafragSpectralModelBase(SpectralModel):
         n_H_quantity = u.Quantity(args[offset])
         return self._secondary_flux(energy, primary_fluxes_bare, n_H_quantity)
 
+    def to_dict(self, full_output=False):
+        """Create dictionary for YAML serialisation (ADR-020)."""
+        tag = self.tag[0] if isinstance(self.tag, list) else self.tag
+        primary_composition = {
+            species: submodel.to_dict(full_output)["particle_distribution"]
+            for species, submodel in self.primary_composition.items()
+        }
+        data = {
+            "type": tag,
+            "primary_composition": primary_composition,
+            "target_composition": dict(self.target_composition),
+            "n_H": Parameters([self.n_H]).to_dict()[0],
+            "distance": {
+                "value": float(self.distance.value),
+                "unit": self.distance.unit.to_string("fits"),
+            },
+        }
+        return {"spectral": data}
+
+    @classmethod
+    def from_dict(cls, data, **kwargs):
+        data = data["spectral"]
+        if data["type"] not in cls.tag:
+            raise ValueError(
+                f"Invalid model type {data['type']} for class {cls.__name__}"
+            )
+
+        primary_composition = {}
+        for species, submodel_data in data["primary_composition"].items():
+            submodel_cls = PARTICLE_DISTRIBUTION_REGISTRY.get_cls(submodel_data["type"])
+            primary_composition[species] = submodel_cls.from_dict(submodel_data)
+
+        n_H = Parameters.from_dict([data["n_H"]])[0]
+        distance = u.Quantity(data["distance"]["value"], data["distance"]["unit"])
+
+        return cls(
+            primary_composition,
+            target_composition=dict(data["target_composition"]),
+            n_H=n_H,
+            distance=distance,
+        )
+
 
 def _interp_log_log(x_ref, y_ref, x_query):
     """Log-log interpolate y_ref(x_ref) onto x_query (ADR-018).
@@ -291,5 +344,9 @@ for _class_name, _channel_tag, _label in _CHANNEL_SPECS:
         },
     )
     globals()[_class_name] = _cls
+    # ADR-020: makes this class reachable from `Models.from_yaml`/`SkyModel.from_dict` via
+    # SPECTRAL_MODEL_REGISTRY.get_cls(tag) -- without this, from_dict on the class itself
+    # works, but a full Models YAML round-trip cannot find the class at all.
+    SPECTRAL_MODEL_REGISTRY.append(_cls)
 
 del _class_name, _channel_tag, _label, _cls
