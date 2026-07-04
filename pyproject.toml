@@ -30,6 +30,11 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest", "pytest-cov"]
+# Only needed to run notebooks/validation/*.ipynb (Step 6, ADR-021) -- naima is the
+# 02_naima_pion_decay_crosscheck.ipynb cross-check target, not a runtime dependency of
+# the package itself. matplotlib/jupyter/nbconvert are needed to plot and execute the
+# notebooks; not required to import or use aafrag_gammapy.
+validation = ["naima", "matplotlib", "jupyter", "nbconvert"]
 
 [tool.setuptools.packages.find]
 include = ["aafrag_gammapy*"]
